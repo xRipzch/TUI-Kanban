@@ -102,9 +102,6 @@ Projects and tasks are automatically saved to:
 
 If you're migrating from an older version, your data will be automatically migrated from the old location.
 
-https://github.com/user-attachments/assets/7ce3be1e-343d-4f08-98af-0baf996e2fef
-
-
 
 https://github.com/user-attachments/assets/fa467298-e3c5-4770-b4b5-c40280f6f9ab
 
