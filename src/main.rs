@@ -127,6 +127,7 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) {
         KeyCode::Char('a') => app.start_adding_task(),
         KeyCode::Char('t') => app.start_adding_tag(),
         KeyCode::Char('m') => app.move_task_forward(),
+        KeyCode::Char('n') => app.move_task_backward(),
         KeyCode::Char('d') => app.delete_task(),
         KeyCode::Char('?') => app.show_help(),
 

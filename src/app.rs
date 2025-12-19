@@ -155,6 +155,23 @@ impl App {
             }
         }
     }
+
+    // move selected task to previous column
+    pub fn move_task_backward(&mut self) {
+        if let Some(prev_column) = self.selected_column.prev() {
+            let selected_col = self.selected_column;
+            let selected_idx = self.selected_index;
+            let current_column = self.board_mut().get_column_mut(selected_col);
+
+            if selected_idx < current_column.len() {
+                let task = current_column.remove(selected_idx);
+                self.board_mut().get_column_mut(prev_column).push(task);
+                self.clamp_selection();
+                self.save();
+            }
+        }
+    }
+
     // del selected task
     pub fn delete_task(&mut self) {
         let selected_col = self.selected_column;
@@ -202,6 +219,12 @@ impl App {
                     let task = Task::new(self.input_buffer.clone());
                     let selected_col = self.selected_column;
                     self.board_mut().get_column_mut(selected_col).push(task);
+                    // Select the newly created task (last in the column)
+                    let column_len = self.board().get_column(selected_col).len();
+                    if column_len > 0 {
+                        self.selected_index = column_len - 1;
+                        self.update_scroll();
+                    }
                     self.save();
                 }
             }

@@ -62,22 +62,24 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(header, area);
 }
 
-// draw the three columns
+// draw the four columns
 fn draw_columns(f: &mut Frame, app: &mut App, area: Rect) {
-    // split main area into three equal columns
+    // split main area into four equal columns
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
-            Constraint::Percentage(34),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
         ])
         .split(area);
 
     // draw each column
     draw_column(f, app, Column::Todo, columns[0]);
     draw_column(f, app, Column::InProgress, columns[1]);
-    draw_column(f, app, Column::Done, columns[2]);
+    draw_column(f, app, Column::Testing, columns[2]);
+    draw_column(f, app, Column::Done, columns[3]);
 }
 
 /// draw single column with task cards
@@ -214,7 +216,8 @@ fn draw_footer(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::raw("Enter: open task | "),
                     Span::raw("a: add task | "),
                     Span::raw("t: add tag | "),
-                    Span::raw("m: move | "),
+                    Span::raw("m: move forward | "),
+                    Span::raw("n: move back | "),
                     Span::raw("d: delete | "),
                     Span::raw("?: help | "),
                     Span::raw("q: quit"),
@@ -410,7 +413,8 @@ fn draw_help(f: &mut Frame, _app: &mut App) {
         Line::from("  Enter : Open task details"),
         Line::from("  a     : Add new task to current column"),
         Line::from("  t     : Add tag to selected task"),
-        Line::from("  m     : Move task to next column (TODO → IN PROGRESS → DONE)"),
+        Line::from("  m     : Move task forward (TODO → IN PROGRESS → TESTING → DONE)"),
+        Line::from("  n     : Move task backward (DONE → TESTING → IN PROGRESS → TODO)"),
         Line::from("  d     : Delete selected task"),
         Line::from("  e     : Edit description (when viewing task)"),
         Line::from(""),

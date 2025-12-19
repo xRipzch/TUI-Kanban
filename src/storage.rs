@@ -7,7 +7,7 @@ use std::path::PathBuf;
 // get path to config file
 fn get_config_path() -> PathBuf {
     // ProjectDirs auto find config
-    if let Some(proj_dirs) = ProjectDirs::from("", "", "omarchy-kanban") {
+    if let Some(proj_dirs) = ProjectDirs::from("", "", "tui-kanban") {
         let config_dir = proj_dirs.config_dir();
         // folder exists?
 
@@ -17,6 +17,16 @@ fn get_config_path() -> PathBuf {
 
         // fallback
         PathBuf::from("projects.json")
+    }
+}
+
+// get old omarchy-kanban config path for migration
+fn get_old_omarchy_config_path() -> PathBuf {
+    if let Some(proj_dirs) = ProjectDirs::from("", "", "omarchy-kanban") {
+        let config_dir = proj_dirs.config_dir();
+        config_dir.join("projects.json")
+    } else {
+        PathBuf::from("old_projects.json")
     }
 }
 
@@ -41,11 +51,23 @@ pub fn save_projects(projects: &[Project]) -> Result<(), Box<dyn std::error::Err
 // read projects
 pub fn load_projects() -> Vec<Project> {
     let path = get_config_path();
-    let old_path = get_old_board_path();
+    let old_omarchy_path = get_old_omarchy_config_path();
+    let old_board_path = get_old_board_path();
 
-    // try migrate from old board.json
-    if !path.exists() && old_path.exists() {
-        if let Ok(content) = fs::read_to_string(&old_path) {
+    // try migrate from old omarchy-kanban projects.json
+    if !path.exists() && old_omarchy_path.exists() {
+        if let Ok(content) = fs::read_to_string(&old_omarchy_path) {
+            if let Ok(projects) = serde_json::from_str::<Vec<Project>>(&content) {
+                // save to new location
+                let _ = save_projects(&projects);
+                return projects;
+            }
+        }
+    }
+
+    // try migrate from old board.json (even older format)
+    if !path.exists() && old_board_path.exists() {
+        if let Ok(content) = fs::read_to_string(&old_board_path) {
             if let Ok(board) = serde_json::from_str::<Board>(&content) {
                 let default_project = Project {
                     name: "Default".to_string(),

@@ -56,11 +56,12 @@ impl Task {
     }
 }
 
-// kanban board with three coloms: todo, in_progress, done
+// kanban board with four columns: todo, in_progress, testing, done
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Board {
     pub todo: Vec<Task>,
     pub in_progress: Vec<Task>,
+    pub testing: Vec<Task>,
     pub done: Vec<Task>,
 }
 
@@ -70,6 +71,7 @@ impl Board {
         Self {
             todo: Vec::new(),
             in_progress: Vec::new(),
+            testing: Vec::new(),
             done: Vec::new(),
         }
     }
@@ -79,6 +81,7 @@ impl Board {
         match column {
             Column::Todo => &mut self.todo,
             Column::InProgress => &mut self.in_progress,
+            Column::Testing => &mut self.testing,
             Column::Done => &mut self.done,
         }
     }
@@ -88,6 +91,7 @@ impl Board {
         match column {
             Column::Todo => &self.todo,
             Column::InProgress => &self.in_progress,
+            Column::Testing => &self.testing,
             Column::Done => &self.done,
         }
     }
@@ -99,6 +103,7 @@ impl Board {
 pub enum Column {
     Todo,
     InProgress,
+    Testing,
     Done,
 }
 
@@ -108,7 +113,8 @@ impl Column {
     pub fn next(self) -> Option<Self> {
         match self {
             Column::Todo => Some(Column::InProgress),
-            Column::InProgress => Some(Column::Done),
+            Column::InProgress => Some(Column::Testing),
+            Column::Testing => Some(Column::Done),
             Column::Done => None,
         }
     }
@@ -118,7 +124,8 @@ impl Column {
         match self {
             Column::Todo => None,
             Column::InProgress => Some(Column::Todo),
-            Column::Done => Some(Column::InProgress),
+            Column::Testing => Some(Column::InProgress),
+            Column::Done => Some(Column::Testing),
         }
     }
 
@@ -127,6 +134,7 @@ impl Column {
         match self {
             Column::Todo => "To Do",
             Column::InProgress => "In Progress",
+            Column::Testing => "Testing",
             Column::Done => "Done",
         }
     }
