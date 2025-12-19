@@ -2,7 +2,8 @@
 
 A simple, lightweight terminal-based kanban board built with Rust. Works on any Linux distribution.
 
-<img width="890" height="626" alt="screenshot-2025-12-19_10-55-11" src="https://github.com/user-attachments/assets/c60ac7b3-20dc-4795-8615-0fa59d86e6ee" />
+<img width="1896" height="1030" alt="screenshot-2025-12-19_19-10-59" src="https://github.com/user-attachments/assets/359221a8-9e25-46a3-ac01-643b3e35b4d8" />
+<img width="1896" height="1030" alt="screenshot-2025-12-19_19-11-17" src="https://github.com/user-attachments/assets/39e8f333-5797-4c4d-93a3-f3a05abd5b8e" />
 
 
 ## Features
@@ -102,6 +103,10 @@ Projects and tasks are automatically saved to:
 If you're migrating from an older version, your data will be automatically migrated from the old location.
 
 https://github.com/user-attachments/assets/7ce3be1e-343d-4f08-98af-0baf996e2fef
+
+
+
+https://github.com/user-attachments/assets/fa467298-e3c5-4770-b4b5-c40280f6f9ab
 
 
 
