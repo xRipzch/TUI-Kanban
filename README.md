@@ -38,15 +38,6 @@ cargo build --release
 sudo install -Dm755 target/release/omarchy-kanban /usr/local/bin/omarchy-kanban
 ```
 
-### Pre-built Binary
-
-Download the latest release from the [releases page](https://github.com/xRipzch/Omarchy-Kanban/releases):
-
-```bash
-tar -xzf omarchy-kanban-0.1.0-x86_64.tar.gz
-sudo install -Dm755 omarchy-kanban /usr/local/bin/omarchy-kanban
-```
-
 ## Usage
 
 Run the application:
