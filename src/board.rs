@@ -42,14 +42,48 @@ impl Task {
         }
     }
 
-    //return color based on tags
+    // return color for a specific tag
+    pub fn get_tag_color(tag: &str) -> Color {
+        match tag {
+            "urgent" => Color::Red,
+            "security" => Color::LightRed,
+            "bug" => Color::Yellow,
+            "feature" => Color::Green,
+            "performance" => Color::LightGreen,
+            "enhancement" => Color::Blue,
+            "User" => Color::LightBlue,
+            "Dev" => Color::Magenta,
+            "documentation" => Color::Cyan,
+            "design" => Color::LightCyan,
+            "refactor" => Color::LightYellow,
+            _ => Color::White,
+        }
+    }
+
+    //return color based on tags (for backward compatibility)
     pub fn get_color(&self) -> Color {
         if self.tags.contains(&"urgent".to_string()) {
             Color::Red
+        } else if self.tags.contains(&"security".to_string()) {
+            Color::LightRed
         } else if self.tags.contains(&"bug".to_string()) {
             Color::Yellow
         } else if self.tags.contains(&"feature".to_string()) {
             Color::Green
+        } else if self.tags.contains(&"performance".to_string()) {
+            Color::LightGreen
+        } else if self.tags.contains(&"enhancement".to_string()) {
+            Color::Blue
+        } else if self.tags.contains(&"User".to_string()) {
+            Color::LightBlue
+        } else if self.tags.contains(&"Dev".to_string()) {
+            Color::Magenta
+        } else if self.tags.contains(&"documentation".to_string()) {
+            Color::Cyan
+        } else if self.tags.contains(&"design".to_string()) {
+            Color::LightCyan
+        } else if self.tags.contains(&"refactor".to_string()) {
+            Color::LightYellow
         } else {
             Color::White
         }

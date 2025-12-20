@@ -174,13 +174,6 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
         let max_title_len = inner.width as usize;
         let truncated_title: String = task.title.chars().take(max_title_len).collect();
 
-        // build tag string
-        let tag_str = if !task.tags.is_empty() {
-            format!("#{}", task.tags.join(" #"))
-        } else {
-            String::new()
-        };
-
         let mut lines = vec![
             // Line 1: Title
             Line::from(Span::styled(
@@ -191,14 +184,18 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
             ))
         ];
 
-        // Line 2: Tags (if any)
-        if !tag_str.is_empty() {
-            lines.push(Line::from(Span::styled(
-                tag_str,
-                Style::default()
-                    .fg(task.get_color())
-                    .add_modifier(Modifier::DIM)
-            )));
+        // Line 2: Tags (if any) - each tag with its own color
+        if !task.tags.is_empty() {
+            let mut tag_spans = vec![];
+            for tag in &task.tags {
+                tag_spans.push(Span::styled(
+                    format!("#{} ", tag),
+                    Style::default()
+                        .fg(crate::board::Task::get_tag_color(tag))
+                        .add_modifier(Modifier::DIM)
+                ));
+            }
+            lines.push(Line::from(tag_spans));
         }
 
         let content = Paragraph::new(lines);
@@ -336,7 +333,7 @@ fn draw_task_detail(f: &mut Frame, app: &mut App) {
             if i < 9 {
                 lines.push(Line::from(vec![
                     Span::styled(format!(" {} ", i + 1), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("#{}", tag), Style::default().fg(task.get_color())),
+                    Span::styled(format!("#{}", tag), Style::default().fg(crate::board::Task::get_tag_color(tag))),
                 ]));
             }
         }
@@ -424,17 +421,57 @@ fn draw_help(f: &mut Frame, _app: &mut App) {
         Line::from(vec![
             Span::raw("  "),
             Span::styled("urgent", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-            Span::raw("  : Red color (high priority)"),
+            Span::raw("        : Red - High priority"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("security", Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD)),
+            Span::raw("      : Light Red - Security work"),
         ]),
         Line::from(vec![
             Span::raw("  "),
             Span::styled("bug", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("     : Yellow color (needs fixing)"),
+            Span::raw("           : Yellow - Needs fixing"),
         ]),
         Line::from(vec![
             Span::raw("  "),
             Span::styled("feature", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            Span::raw(" : Green color (new feature)"),
+            Span::raw("       : Green - New feature"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("performance", Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD)),
+            Span::raw("   : Light Green - Optimization"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("enhancement", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+            Span::raw("   : Blue - Improvement"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("User", Style::default().fg(Color::LightBlue).add_modifier(Modifier::BOLD)),
+            Span::raw("          : Light Blue - User-facing"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Dev", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+            Span::raw("           : Magenta - Developer work"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("documentation", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::raw(" : Cyan - Documentation"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("design", Style::default().fg(Color::LightCyan).add_modifier(Modifier::BOLD)),
+            Span::raw("        : Light Cyan - UI/UX work"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("refactor", Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)),
+            Span::raw("      : Light Yellow - Code quality"),
         ]),
         Line::from(""),
         Line::from(vec![

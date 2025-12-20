@@ -88,9 +88,17 @@ tui-kanban
 ### Tags
 
 The following tags have special colors:
-- **urgent** - Red
-- **bug** - Yellow
-- **feature** - Green
+- **urgent** - Red (high priority)
+- **security** - Light Red (security work)
+- **bug** - Yellow (needs fixing)
+- **feature** - Green (new feature)
+- **performance** - Light Green (optimization)
+- **enhancement** - Blue (improvement)
+- **User** - Light Blue (user-facing work)
+- **Dev** - Magenta (developer work)
+- **documentation** - Cyan (documentation)
+- **design** - Light Cyan (UI/UX work)
+- **refactor** - Light Yellow (code quality)
 - Other tags - White
 
 ## Data Storage

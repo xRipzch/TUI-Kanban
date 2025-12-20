@@ -123,6 +123,13 @@ impl App {
             return;
         }
 
+        let column_len = self.board().get_column(self.selected_column).len();
+        let max_scroll = if column_len > self.visible_items {
+            column_len - self.visible_items
+        } else {
+            0
+        };
+
         // scroll down if selected is below visible area
         if self.selected_index >= self.scroll_offset + self.visible_items {
             self.scroll_offset = self.selected_index - self.visible_items + 1;
@@ -131,6 +138,11 @@ impl App {
         // scroll up if selected is above visible area
         if self.selected_index < self.scroll_offset {
             self.scroll_offset = self.selected_index;
+        }
+
+        // ensure we don't scroll past the end (fixes bug when switching to columns with fewer items)
+        if self.scroll_offset > max_scroll {
+            self.scroll_offset = max_scroll;
         }
     }
 
