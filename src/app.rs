@@ -543,7 +543,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::{BoardColumn, Task, Project, Board};
+    use crate::board::{Board, BoardColumn, Project, Task};
 
     fn create_test_app() -> App {
         let board = Board {
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn test_navigation() {
         let mut app = create_test_app();
-        
+
         // Initial state
         assert_eq!(app.selected_column, 0);
         assert_eq!(app.selected_index, 0);
@@ -581,7 +581,7 @@ mod tests {
         // Move down
         app.move_down();
         assert_eq!(app.selected_index, 1);
-        
+
         // Move down (clamped)
         app.move_down();
         assert_eq!(app.selected_index, 1); // Should stay at last item
@@ -606,7 +606,7 @@ mod tests {
 
         // Move Task 1 forward (Col 1 -> Col 2)
         app.move_task_forward();
-        
+
         // Check Col 1
         assert_eq!(app.board().columns[0].tasks.len(), 1);
         assert_eq!(app.board().columns[0].tasks[0].title, "Task 2");
@@ -618,10 +618,10 @@ mod tests {
         // Move Task 2 forward (Col 1 -> Col 2)
         app.selected_index = 0; // ensure selection
         app.move_task_forward();
-        
+
         // Check Col 1 empty
         assert!(app.board().columns[0].tasks.is_empty());
-        
+
         // Check Col 2 has 2 tasks
         assert_eq!(app.board().columns[1].tasks.len(), 2);
     }
@@ -629,7 +629,7 @@ mod tests {
     #[test]
     fn test_delete_task() {
         let mut app = create_test_app();
-        
+
         app.delete_task();
         assert_eq!(app.board().columns[0].tasks.len(), 1);
         assert_eq!(app.board().columns[0].tasks[0].title, "Task 2");
@@ -640,9 +640,9 @@ mod tests {
         let mut app = create_test_app();
         app.input_buffer = "Column 3".to_string();
         app.input_mode = InputMode::AddingColumn;
-        
+
         app.submit_input(); // This simulates pressing Enter
-        
+
         assert_eq!(app.board().columns.len(), 3);
         assert_eq!(app.board().columns[2].name, "Column 3");
     }
@@ -653,16 +653,16 @@ mod tests {
         app.selected_column = 0;
         app.input_buffer = "Renamed 1".to_string();
         app.input_mode = InputMode::RenamingColumn;
-        
+
         app.submit_input();
-        
+
         assert_eq!(app.board().columns[0].name, "Renamed 1");
     }
 
     #[test]
     fn test_delete_column() {
         let mut app = create_test_app();
-        
+
         // Cannot delete non-empty column (simplified logic check)
         app.selected_column = 0;
         app.delete_column();
@@ -673,27 +673,27 @@ mod tests {
         app.delete_column();
         assert_eq!(app.board().columns.len(), 1);
         assert_eq!(app.board().columns[0].name, "Column 1");
-        
+
         // Cannot delete last remaining column
         app.delete_column(); // Even if empty (it's not here, but let's clear it)
-        
+
         // Clear tasks to try deleting last column
         app.delete_task();
         app.delete_task();
         assert!(app.board().columns[0].tasks.is_empty());
-        
-        app.delete_column(); 
+
+        app.delete_column();
         assert_eq!(app.board().columns.len(), 1); // Should guard against deleting the last column
     }
 
     #[test]
     fn test_move_column() {
         let mut app = create_test_app();
-        
+
         // Move Col 2 Left -> becomes Col 1
         app.selected_column = 1;
         app.move_column_left();
-        
+
         assert_eq!(app.board().columns[0].name, "Column 2");
         assert_eq!(app.board().columns[1].name, "Column 1");
         assert_eq!(app.selected_column, 0); // Selection should follow
