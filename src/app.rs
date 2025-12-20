@@ -1,4 +1,4 @@
-use crate::board::{Board, Column, Project, Task};
+use crate::board::{Board, BoardColumn, Project, Task};
 use crate::storage;
 
 // application state
@@ -6,7 +6,7 @@ pub struct App {
     pub projects: Vec<Project>,
     pub current_project: usize,
     pub selected_project_index: usize, // for project list view
-    pub selected_column: Column,
+    pub selected_column: usize,        // Changed from Column enum to usize
     pub selected_index: usize,
     pub scroll_offset: usize,
     pub visible_items: usize,
@@ -36,6 +36,8 @@ pub enum InputMode {
     ViewingHelp,
     ProjectList,
     AddingProject,
+    AddingColumn,   // New
+    RenamingColumn, // New
 }
 
 impl App {
@@ -45,7 +47,7 @@ impl App {
             projects: storage::load_projects(),
             current_project: 0,
             selected_project_index: 0,
-            selected_column: Column::Todo,
+            selected_column: 0, // Default to the first column
             selected_index: 0,
             scroll_offset: 0,
             visible_items: 5, // default, updated during draw
@@ -85,7 +87,10 @@ impl App {
 
     // move selection down
     pub fn move_down(&mut self) {
-        let column_len = self.board().get_column(self.selected_column).len();
+        let column_len = self
+            .board()
+            .get_column(self.selected_column)
+            .map_or(0, |col| col.tasks.len());
         if column_len > 0 && self.selected_index < column_len - 1 {
             self.selected_index += 1;
         }
@@ -93,22 +98,26 @@ impl App {
 
     // move selection left
     pub fn move_left(&mut self) {
-        if let Some(prev) = self.selected_column.prev() {
-            self.selected_column = prev;
+        if self.selected_column > 0 {
+            self.selected_column -= 1;
             self.clamp_selection();
         }
     }
 
     // move selection right
     pub fn move_right(&mut self) {
-        if let Some(next) = self.selected_column.next() {
-            self.selected_column = next;
+        if self.selected_column < self.board().columns.len() - 1 {
+            self.selected_column += 1;
             self.clamp_selection();
         }
     }
+
     // clamp selection to no go out of bounds
     fn clamp_selection(&mut self) {
-        let column_len = self.board().get_column(self.selected_column).len();
+        let column_len = self
+            .board()
+            .get_column(self.selected_column)
+            .map_or(0, |col| col.tasks.len()); // Safely get task count
         if column_len == 0 {
             self.selected_index = 0;
             self.scroll_offset = 0;
@@ -123,7 +132,10 @@ impl App {
             return;
         }
 
-        let column_len = self.board().get_column(self.selected_column).len();
+        let column_len = self
+            .board()
+            .get_column(self.selected_column)
+            .map_or(0, |col| col.tasks.len());
         let max_scroll = if column_len > self.visible_items {
             column_len - self.visible_items
         } else {
@@ -146,56 +158,127 @@ impl App {
         }
     }
 
-    // update visible items count based on screen height
-    pub fn set_visible_items(&mut self, height: u16, card_height: u16, card_spacing: u16) {
-        let total_card_height = card_height + card_spacing;
-        self.visible_items = (height / total_card_height).max(1) as usize;
-    }
-
     // move selected task to next column
     pub fn move_task_forward(&mut self) {
-        if let Some(next_column) = self.selected_column.next() {
-            let selected_col = self.selected_column;
-            let selected_idx = self.selected_index;
-            let current_column = self.board_mut().get_column_mut(selected_col);
+        let current_column_idx = self.selected_column;
+        let next_column_idx = current_column_idx + 1;
 
-            if selected_idx < current_column.len() {
-                let task = current_column.remove(selected_idx);
-                self.board_mut().get_column_mut(next_column).push(task);
-                self.clamp_selection();
-                self.save();
-            }
+        if next_column_idx < self.board().columns.len() {
+            let selected_idx = self.selected_index; // Capture before mutable borrow
+
+            // Remove task from current column
+            let task = {
+                let current_column = self.board_mut().get_column_mut(current_column_idx).unwrap();
+                if selected_idx < current_column.tasks.len() {
+                    current_column.tasks.remove(selected_idx)
+                } else {
+                    return; // No task to move
+                }
+            };
+
+            // Add task to next column
+            let next_column = self.board_mut().get_column_mut(next_column_idx).unwrap();
+            next_column.tasks.push(task);
+
+            self.clamp_selection();
+            self.save();
         }
     }
 
     // move selected task to previous column
     pub fn move_task_backward(&mut self) {
-        if let Some(prev_column) = self.selected_column.prev() {
-            let selected_col = self.selected_column;
-            let selected_idx = self.selected_index;
-            let current_column = self.board_mut().get_column_mut(selected_col);
+        let current_column_idx = self.selected_column;
+        if current_column_idx > 0 {
+            let prev_column_idx = current_column_idx - 1;
+            let selected_idx = self.selected_index; // Capture before mutable borrow
 
-            if selected_idx < current_column.len() {
-                let task = current_column.remove(selected_idx);
-                self.board_mut().get_column_mut(prev_column).push(task);
-                self.clamp_selection();
-                self.save();
-            }
+            // Remove task from current column
+            let task = {
+                let current_column = self.board_mut().get_column_mut(current_column_idx).unwrap();
+                if selected_idx < current_column.tasks.len() {
+                    current_column.tasks.remove(selected_idx)
+                } else {
+                    return; // No task to move
+                }
+            };
+
+            // Add task to previous column
+            let prev_column = self.board_mut().get_column_mut(prev_column_idx).unwrap();
+            prev_column.tasks.push(task);
+
+            self.clamp_selection();
+            self.save();
         }
     }
 
     // del selected task
     pub fn delete_task(&mut self) {
-        let selected_col = self.selected_column;
-        let selected_idx = self.selected_index;
-        let column = self.board_mut().get_column_mut(selected_col);
-        if selected_idx < column.len() {
-            column.remove(selected_idx);
+        let current_column_idx = self.selected_column;
+        let selected_idx = self.selected_index; // Capture before mutable borrow
+        let column = self.board_mut().get_column_mut(current_column_idx).unwrap(); // Directly get mutable column
+        if selected_idx < column.tasks.len() {
+            column.tasks.remove(selected_idx);
             self.clamp_selection();
             self.save();
         }
     }
-    
+
+    // Column Management Methods
+
+    pub fn start_adding_column(&mut self) {
+        self.input_mode = InputMode::AddingColumn;
+        self.input_buffer.clear();
+    }
+
+    pub fn start_renaming_column(&mut self) {
+        if let Some(column) = self.board().get_column(self.selected_column) {
+            self.input_buffer = column.name.clone();
+            self.input_mode = InputMode::RenamingColumn;
+        }
+    }
+
+    pub fn delete_column(&mut self) {
+        let board_len = self.board().columns.len();
+        if board_len <= 1 {
+            return; // Don't delete the last column
+        }
+
+        // Only delete if empty for safety, or prompt (simplified here: must be empty)
+        let is_empty = if let Some(col) = self.board().get_column(self.selected_column) {
+            col.tasks.is_empty()
+        } else {
+            false
+        };
+
+        if is_empty {
+            let col_idx = self.selected_column; // Capture before mutable borrow
+            self.board_mut().columns.remove(col_idx);
+            if self.selected_column >= self.board().columns.len() {
+                self.selected_column = self.board().columns.len().saturating_sub(1);
+            }
+            self.clamp_selection();
+            self.save();
+        }
+    }
+
+    pub fn move_column_left(&mut self) {
+        if self.selected_column > 0 {
+            let idx = self.selected_column;
+            self.board_mut().columns.swap(idx, idx - 1);
+            self.selected_column -= 1;
+            self.save();
+        }
+    }
+
+    pub fn move_column_right(&mut self) {
+        if self.selected_column < self.board().columns.len() - 1 {
+            let idx = self.selected_column;
+            self.board_mut().columns.swap(idx, idx + 1);
+            self.selected_column += 1;
+            self.save();
+        }
+    }
+
     // start input mode for adding task
     pub fn start_adding_task(&mut self) {
         self.input_mode = InputMode::AddingTask;
@@ -204,8 +287,13 @@ impl App {
 
     // start input mode for adding tag
     pub fn start_adding_tag(&mut self) {
-        self.input_mode = InputMode::AddingTag;
-        self.input_buffer.clear();
+        // Only allow adding tags if there's a selected task in the selected column
+        if let Some(column) = self.board().get_column(self.selected_column) {
+            if self.selected_index < column.tasks.len() {
+                self.input_mode = InputMode::AddingTag;
+                self.input_buffer.clear();
+            }
+        }
     }
 
     // cancel input
@@ -229,10 +317,11 @@ impl App {
             InputMode::AddingTask => {
                 if !self.input_buffer.is_empty() {
                     let task = Task::new(self.input_buffer.clone());
-                    let selected_col = self.selected_column;
-                    self.board_mut().get_column_mut(selected_col).push(task);
+                    let selected_col_idx = self.selected_column; // Capture before mutable borrow
+                    let current_column = self.board_mut().get_column_mut(selected_col_idx).unwrap();
+                    current_column.tasks.push(task);
                     // Select the newly created task (last in the column)
-                    let column_len = self.board().get_column(selected_col).len();
+                    let column_len = current_column.tasks.len();
                     if column_len > 0 {
                         self.selected_index = column_len - 1;
                         self.update_scroll();
@@ -243,11 +332,11 @@ impl App {
             InputMode::AddingTag => {
                 if !self.input_buffer.is_empty() {
                     let tag = self.input_buffer.clone();
-                    let selected_col = self.selected_column;
-                    let selected_idx = self.selected_index;
-                    let column = self.board_mut().get_column_mut(selected_col);
-                    if selected_idx < column.len() {
-                        column[selected_idx].add_tag(tag);
+                    let current_column_idx = self.selected_column; // Capture before mutable borrow
+                    let selected_idx = self.selected_index; // Capture before mutable borrow
+                    let column = self.board_mut().get_column_mut(current_column_idx).unwrap();
+                    if selected_idx < column.tasks.len() {
+                        column.tasks[selected_idx].add_tag(tag);
                         self.save();
                     }
                 }
@@ -255,11 +344,11 @@ impl App {
             InputMode::EditingTitle => {
                 if !self.input_buffer.is_empty() {
                     let title = self.input_buffer.clone();
-                    let selected_col = self.selected_column;
-                    let selected_idx = self.selected_index;
-                    let column = self.board_mut().get_column_mut(selected_col);
-                    if selected_idx < column.len() {
-                        column[selected_idx].title = title;
+                    let current_column_idx = self.selected_column; // Capture before mutable borrow
+                    let selected_idx = self.selected_index; // Capture before mutable borrow
+                    let column = self.board_mut().get_column_mut(current_column_idx).unwrap();
+                    if selected_idx < column.tasks.len() {
+                        column.tasks[selected_idx].title = title;
                         self.save();
                     }
                 }
@@ -269,11 +358,11 @@ impl App {
             }
             InputMode::EditingDescription => {
                 let description = self.input_buffer.clone();
-                let selected_col = self.selected_column;
-                let selected_idx = self.selected_index;
-                let column = self.board_mut().get_column_mut(selected_col);
-                if selected_idx < column.len() {
-                    column[selected_idx].description = description;
+                let current_column_idx = self.selected_column; // Capture before mutable borrow
+                let selected_idx = self.selected_index; // Capture before mutable borrow
+                let column = self.board_mut().get_column_mut(current_column_idx).unwrap();
+                if selected_idx < column.tasks.len() {
+                    column.tasks[selected_idx].description = description;
                     self.save();
                 }
                 self.input_mode = InputMode::ViewingTask;
@@ -292,17 +381,41 @@ impl App {
                 self.input_buffer.clear();
                 return;
             }
-            InputMode::Normal | InputMode::ViewingTask | InputMode::ViewingHelp | InputMode::ProjectList => {}
+            InputMode::AddingColumn => {
+                if !self.input_buffer.is_empty() {
+                    let name = self.input_buffer.clone();
+                    // Simple ID generation: slugify name or random? For now, just use name as ID for simplicity or generate a simple one.
+                    let id = name.to_lowercase().replace(" ", "_");
+                    let new_column = BoardColumn::new(id, name);
+                    self.board_mut().columns.push(new_column);
+                    self.save();
+                }
+            }
+            InputMode::RenamingColumn => {
+                if !self.input_buffer.is_empty() {
+                    let name = self.input_buffer.clone();
+                    let col_idx = self.selected_column; // Capture before mutable borrow
+                    if let Some(column) = self.board_mut().get_column_mut(col_idx) {
+                        column.name = name;
+                        self.save();
+                    }
+                }
+            }
+            InputMode::Normal
+            | InputMode::ViewingTask
+            | InputMode::ViewingHelp
+            | InputMode::ProjectList => {}
         }
         self.cancel_input();
     }
 
     // open task detail view
     pub fn open_task(&mut self) {
-        let column = self.board().get_column(self.selected_column);
-        if self.selected_index < column.len() {
-            self.input_mode = InputMode::ViewingTask;
-            self.focused_field = TaskField::Title; // Reset to title when opening
+        if let Some(column) = self.board().get_column(self.selected_column) {
+            if self.selected_index < column.tasks.len() {
+                self.input_mode = InputMode::ViewingTask;
+                self.focused_field = TaskField::Title; // Reset to title when opening
+            }
         }
     }
 
@@ -317,32 +430,35 @@ impl App {
 
     // start editing title
     pub fn start_editing_title(&mut self) {
-        let column = self.board().get_column(self.selected_column);
-        if self.selected_index < column.len() {
-            self.input_buffer = column[self.selected_index].title.clone();
-            self.input_mode = InputMode::EditingTitle;
+        if let Some(column) = self.board().get_column(self.selected_column) {
+            if self.selected_index < column.tasks.len() {
+                self.input_buffer = column.tasks[self.selected_index].title.clone();
+                self.input_mode = InputMode::EditingTitle;
+            }
         }
     }
 
     // start editing description
     pub fn start_editing_description(&mut self) {
-        let column = self.board().get_column(self.selected_column);
-        if self.selected_index < column.len() {
-            self.input_buffer = column[self.selected_index].description.clone();
-            self.input_mode = InputMode::EditingDescription;
+        if let Some(column) = self.board().get_column(self.selected_column) {
+            if self.selected_index < column.tasks.len() {
+                self.input_buffer = column.tasks[self.selected_index].description.clone();
+                self.input_mode = InputMode::EditingDescription;
+            }
         }
     }
 
     // remove tag by index
     pub fn remove_tag(&mut self, tag_index: usize) {
-        let selected_col = self.selected_column;
-        let selected_idx = self.selected_index;
-        let column = self.board_mut().get_column_mut(selected_col);
-        if selected_idx < column.len() {
-            let task = &mut column[selected_idx];
-            if tag_index < task.tags.len() {
-                task.tags.remove(tag_index);
-                self.save();
+        let current_column_idx = self.selected_column; // Capture before mutable borrow
+        let selected_idx = self.selected_index; // Capture before mutable borrow
+        if let Some(column) = self.board_mut().get_column_mut(current_column_idx) {
+            if selected_idx < column.tasks.len() {
+                let task = &mut column.tasks[selected_idx];
+                if tag_index < task.tags.len() {
+                    task.tags.remove(tag_index);
+                    self.save();
+                }
             }
         }
     }
@@ -356,7 +472,7 @@ impl App {
     pub fn select_project(&mut self) {
         self.current_project = self.selected_project_index;
         self.input_mode = InputMode::Normal;
-        self.selected_column = Column::Todo;
+        self.selected_column = 0; // Reset to first column when changing projects
         self.selected_index = 0;
         self.scroll_offset = 0;
     }

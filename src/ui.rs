@@ -1,12 +1,15 @@
 use crate::app::{App, InputMode};
-use crate::board::Column;
+use crate::board::{BoardColumn, Task}; // Removed Board as it's not directly used here
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+
+// Define a static empty vector for tasks to avoid temporary value errors
+static EMPTY_TASK_VEC: Vec<Task> = Vec::new();
 
 // render UI
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -31,64 +34,103 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),   // Header with project name
-            Constraint::Min(0),      // Main area
-            Constraint::Length(3),   // Footer
+            Constraint::Length(3), // Header with project name
+            Constraint::Min(0),    // Main area
+            Constraint::Length(3), // Footer
         ])
         .split(f.area());
 
     // draw header with project name
     draw_header(f, app, chunks[0]);
 
-    // draw the three columns
+    // draw the columns dynamically
     draw_columns(f, app, chunks[1]);
 
     // footer with help text or input field
     draw_footer(f, app, chunks[2]);
 }
 
-// draw header with project name
+// draw header with f and app (immutable)
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let project_name = app.project_name();
     let header_text = vec![Line::from(vec![
-        Span::styled("Project: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::styled(project_name, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Project: ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            project_name,
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("  (Ctrl+P to switch)", Style::default().fg(Color::DarkGray)),
     ])];
 
-    let header = Paragraph::new(header_text)
-        .block(Block::default().borders(Borders::ALL));
+    let header = Paragraph::new(header_text).block(Block::default().borders(Borders::ALL));
 
     f.render_widget(header, area);
 }
 
-// draw the four columns
+// draw the columns dynamically
 fn draw_columns(f: &mut Frame, app: &mut App, area: Rect) {
-    // split main area into four equal columns
-    let columns = Layout::default()
+    let num_columns = app.board().columns.len();
+    if num_columns == 0 {
+        // Handle case with no columns, e.g., display a message or just an empty area
+        let empty_message =
+            Paragraph::new("No columns defined. Press Shift+C to add a new column.")
+                .alignment(ratatui::layout::Alignment::Center)
+                .block(Block::default().borders(Borders::ALL).title("Board"));
+        f.render_widget(empty_message, area);
+        return;
+    }
+
+    // Split main area into dynamic number of columns
+    let constraints: Vec<Constraint> = (0..num_columns)
+        .map(|_| Constraint::Percentage(100 / num_columns as u16))
+        .collect();
+
+    let columns_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-        ])
+        .constraints(constraints)
         .split(area);
 
-    // draw each column
-    draw_column(f, app, Column::Todo, columns[0]);
-    draw_column(f, app, Column::InProgress, columns[1]);
-    draw_column(f, app, Column::Testing, columns[2]);
-    draw_column(f, app, Column::Done, columns[3]);
+    // Update visible_items for the selected column outside the loop
+    // This allows draw_column to take an immutable reference to app
+    let mut new_visible_items = app.visible_items; // Capture current value
+    if let Some(selected_column_layout_area) = columns_layout.get(app.selected_column) {
+        let card_height = 5;
+        let card_spacing = 1;
+        new_visible_items =
+            (selected_column_layout_area.height / (card_height + card_spacing)).max(1) as usize;
+    }
+
+    // Now iterate and draw, app can be borrowed immutably
+    for (i, board_column) in app.board().columns.iter().enumerate() {
+        // draw_column now takes an immutable reference to app
+        draw_column(f, app, i, board_column, columns_layout[i]);
+    }
+    // Finally, apply the new visible_items value after all immutable borrows of app are done.
+    app.visible_items = new_visible_items;
 }
 
 /// draw single column with task cards
-fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
-    let is_selected_column = app.selected_column == column;
+fn draw_column(
+    f: &mut Frame,
+    app: &App,
+    column_idx: usize,
+    board_column: &BoardColumn,
+    area: Rect,
+) {
+    let is_selected_column = app.selected_column == column_idx;
 
     // highlight border if selected column
     let border_style = if is_selected_column {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
@@ -96,7 +138,7 @@ fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
     let outer_block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
-        .title(column.name());
+        .title(board_column.name.as_str()); // Use board_column.name
 
     let inner_area = outer_block.inner(area);
     f.render_widget(outer_block, area);
@@ -105,10 +147,7 @@ fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
     let card_height = 5;
     let card_spacing = 1; // space between cards
 
-    // update visible items for selected column based on actual screen height
-    if is_selected_column {
-        app.set_visible_items(inner_area.height, card_height, card_spacing);
-    }
+    // visible items is now set outside this function in draw_columns
 
     // determine scroll offset for this column (must get before borrowing tasks)
     let scroll_offset = if is_selected_column {
@@ -117,8 +156,8 @@ fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
         0
     };
 
-    // now get the tasks (immutable borrow)
-    let tasks = app.board().get_column(column);
+    // now get the tasks
+    let tasks = &board_column.tasks;
 
     // render each task as a card, starting from scroll_offset
     let mut rendered = 0;
@@ -137,13 +176,19 @@ fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
             height: card_height,
         };
 
-        draw_task_card(f, task, card_area, is_selected_column && i == app.selected_index);
+        draw_task_card(
+            f,
+            task,
+            card_area,
+            is_selected_column && i == app.selected_index,
+        );
         rendered += 1;
     }
 }
 
 /// draw a single task card
-fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selected: bool) {
+fn draw_task_card(f: &mut Frame, task: &Task, area: Rect, is_selected: bool) {
+    // Changed crate::board::Task to Task
     // card border style
     let border_style = if is_selected {
         Style::default()
@@ -166,7 +211,7 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
         .style(Style::default().bg(bg_color));
 
     let inner = card_block.inner(area);
-    f.render_widget(card_block, area);
+    f.render_widget(card_block, inner); // Changed from card_block.inner(area) to area as inner is already calculated
 
     // render task title and tags on separate lines
     if inner.height >= 2 {
@@ -180,8 +225,12 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
                 truncated_title,
                 Style::default()
                     .fg(Color::White)
-                    .add_modifier(if is_selected { Modifier::BOLD } else { Modifier::empty() })
-            ))
+                    .add_modifier(if is_selected {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            )),
         ];
 
         // Line 2: Tags (if any) - each tag with its own color
@@ -192,7 +241,7 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
                     format!("#{} ", tag),
                     Style::default()
                         .fg(crate::board::Task::get_tag_color(tag))
-                        .add_modifier(Modifier::DIM)
+                        .add_modifier(Modifier::DIM),
                 ));
             }
             lines.push(Line::from(tag_spans));
@@ -207,19 +256,17 @@ fn draw_task_card(f: &mut Frame, task: &crate::board::Task, area: Rect, is_selec
 fn draw_footer(f: &mut Frame, app: &mut App, area: Rect) {
     let text = match app.input_mode {
         InputMode::Normal => {
-            vec![
-                Line::from(vec![
-                    Span::raw("hjkl/arrows: navigate | "),
-                    Span::raw("Enter: open task | "),
-                    Span::raw("a: add task | "),
-                    Span::raw("t: add tag | "),
-                    Span::raw("m: move forward | "),
-                    Span::raw("n: move back | "),
-                    Span::raw("d: delete | "),
-                    Span::raw("?: help | "),
-                    Span::raw("q: quit"),
-                ])
-            ]
+            vec![Line::from(vec![
+                Span::raw("hjkl/arrows: navigate | "),
+                Span::raw("Enter: open task | "),
+                Span::raw("a: add task | "),
+                Span::raw("t: add tag | "),
+                Span::raw("m: move task forward | "),
+                Span::raw("n: move task back | "),
+                Span::raw("d: delete task | "),
+                Span::raw("?: help | "),
+                Span::raw("q: quit"),
+            ])]
         }
         InputMode::AddingTask => {
             vec![
@@ -239,11 +286,28 @@ fn draw_footer(f: &mut Frame, app: &mut App, area: Rect) {
                 Line::from("Press Enter to submit, Esc to cancel"),
             ]
         }
+        InputMode::AddingColumn => {
+            vec![
+                Line::from(vec![
+                    Span::styled("Add Column: ", Style::default().fg(Color::Yellow)),
+                    Span::raw(&app.input_buffer),
+                ]),
+                Line::from("Press Enter to submit, Esc to cancel"),
+            ]
+        }
+        InputMode::RenamingColumn => {
+            vec![
+                Line::from(vec![
+                    Span::styled("Rename Column: ", Style::default().fg(Color::Yellow)),
+                    Span::raw(&app.input_buffer),
+                ]),
+                Line::from("Press Enter to submit, Esc to cancel"),
+            ]
+        }
         _ => vec![Line::from("")],
     };
 
-    let paragraph = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL));
+    let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
 
     f.render_widget(paragraph, area);
 }
@@ -253,11 +317,15 @@ fn draw_task_detail(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     // get the selected task
-    let column = app.board().get_column(app.selected_column);
-    if app.selected_index >= column.len() {
+    let column_tasks = if let Some(column) = app.board().columns.get(app.selected_column) {
+        &column.tasks
+    } else {
+        &EMPTY_TASK_VEC
+    };
+    if app.selected_index >= column_tasks.len() {
         return;
     }
-    let task = &column[app.selected_index];
+    let task = &column_tasks[app.selected_index];
 
     // check what editing mode we're in
     let is_editing_title = app.input_mode == InputMode::EditingTitle;
@@ -292,75 +360,112 @@ fn draw_task_detail(f: &mut Frame, app: &mut App) {
 
     // title section - show editable input if editing, otherwise show read-only
     use crate::app::TaskField;
-    let is_title_focused = app.focused_field == TaskField::Title && !is_editing_title && !is_editing_description;
+    let is_title_focused =
+        app.focused_field == TaskField::Title && !is_editing_title && !is_editing_description;
 
     if is_editing_title {
         let title_para = Paragraph::new(app.input_buffer.as_str())
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Title [EDITING]")
-                .border_style(Style::default().fg(Color::Yellow)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Title [EDITING]")
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
             .style(Style::default().bg(Color::DarkGray));
         f.render_widget(title_para, sections[0]);
     } else {
-        let title_text = vec![
-            Line::from(vec![
-                Span::styled("Title: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(&task.title),
-            ]),
-        ];
+        let title_text = vec![Line::from(vec![
+            Span::styled(
+                "Title: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(&task.title),
+        ])];
         let border_style = if is_title_focused {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
-        let title_para = Paragraph::new(title_text)
-            .block(Block::default().borders(Borders::ALL).border_style(border_style));
+        let title_para = Paragraph::new(title_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        );
         f.render_widget(title_para, sections[0]);
     }
 
     // tags section - show numbered tags for easy removal
-    let is_tags_focused = app.focused_field == TaskField::Tags && !is_editing_title && !is_editing_description;
+    let is_tags_focused =
+        app.focused_field == TaskField::Tags && !is_editing_title && !is_editing_description;
 
     let tags_lines = if !task.tags.is_empty() {
-        let mut lines = vec![
-            Line::from(vec![
-                Span::styled("Tags ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled("(press 1-9 to remove):", Style::default().fg(Color::DarkGray)),
-            ])
-        ];
+        let mut lines = vec![Line::from(vec![
+            Span::styled(
+                "Tags ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "(press 1-9 to remove):",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ])];
         for (i, tag) in task.tags.iter().enumerate() {
             if i < 9 {
                 lines.push(Line::from(vec![
-                    Span::styled(format!(" {} ", i + 1), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("#{}", tag), Style::default().fg(crate::board::Task::get_tag_color(tag))),
+                    Span::styled(
+                        format!(" {} ", i + 1),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("#{}", tag),
+                        Style::default().fg(crate::board::Task::get_tag_color(tag)),
+                    ),
                 ]));
             }
         }
         lines
     } else {
-        vec![Line::from(Span::styled("No tags", Style::default().fg(Color::DarkGray)))]
+        vec![Line::from(Span::styled(
+            "No tags",
+            Style::default().fg(Color::DarkGray),
+        ))]
     };
     let border_style = if is_tags_focused {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
-    let tags_para = Paragraph::new(tags_lines)
-        .block(Block::default().borders(Borders::ALL).border_style(border_style));
+    let tags_para = Paragraph::new(tags_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(border_style),
+    );
     f.render_widget(tags_para, sections[1]);
 
     // description section - show input field if editing, otherwise show text
-    let is_desc_focused = app.focused_field == TaskField::Description && !is_editing_title && !is_editing_description;
+    let is_desc_focused =
+        app.focused_field == TaskField::Description && !is_editing_title && !is_editing_description;
 
     if is_editing_description {
         // Show editable input field
         let desc_para = Paragraph::new(app.input_buffer.as_str())
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Description [EDITING]")
-                .border_style(Style::default().fg(Color::Yellow)))
-            .wrap(ratatui::widgets::Wrap { trim: false })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Description [EDITING]")
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .wrap(Wrap { trim: false })
             .style(Style::default().bg(Color::DarkGray));
         f.render_widget(desc_para, sections[2]);
     } else {
@@ -371,13 +476,20 @@ fn draw_task_detail(f: &mut Frame, app: &mut App) {
             &task.description
         };
         let border_style = if is_desc_focused {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
         let desc_para = Paragraph::new(desc_text)
-            .block(Block::default().borders(Borders::ALL).title("Description").border_style(border_style))
-            .wrap(ratatui::widgets::Wrap { trim: false });
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Description")
+                    .border_style(border_style),
+            )
+            .wrap(Wrap { trim: false });
         f.render_widget(desc_para, sections[2]);
     }
 }
@@ -396,87 +508,164 @@ fn draw_help(f: &mut Frame, _app: &mut App) {
 
     let help_text = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Navigation:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Navigation:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  h/← : Move left (previous column)"),
         Line::from("  j/↓ : Move down (next task)"),
         Line::from("  k/↑ : Move up (previous task)"),
         Line::from("  l/→ : Move right (next column)"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Task Management:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Column Management:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Shift+C : Add new column"),
+        Line::from("  Shift+R : Rename current column"),
+        Line::from("  Shift+D : Delete current column (if empty)"),
+        Line::from("  Shift+H/← : Move column left"),
+        Line::from("  Shift+L/→ : Move column right"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Task Management:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  Enter : Open task details"),
         Line::from("  a     : Add new task to current column"),
         Line::from("  t     : Add tag to selected task"),
-        Line::from("  m     : Move task forward (TODO → IN PROGRESS → TESTING → DONE)"),
-        Line::from("  n     : Move task backward (DONE → TESTING → IN PROGRESS → TODO)"),
+        Line::from("  m     : Move task forward (to next column)"),
+        Line::from("  n     : Move task backward (to previous column)"),
         Line::from("  d     : Delete selected task"),
         Line::from("  e     : Edit description (when viewing task)"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Predefined Tags:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Predefined Tags:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("urgent", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "urgent",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw("        : Red - High priority"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("security", Style::default().fg(Color::LightRed).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "security",
+                Style::default()
+                    .fg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("      : Light Red - Security work"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("bug", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "bug",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("           : Yellow - Needs fixing"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("feature", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "feature",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("       : Green - New feature"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("performance", Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "performance",
+                Style::default()
+                    .fg(Color::LightGreen)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("   : Light Green - Optimization"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("enhancement", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "enhancement",
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("   : Blue - Improvement"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("User", Style::default().fg(Color::LightBlue).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "User",
+                Style::default()
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("          : Light Blue - User-facing"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("Dev", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Dev",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("           : Magenta - Developer work"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("documentation", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "documentation",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" : Cyan - Documentation"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("design", Style::default().fg(Color::LightCyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "design",
+                Style::default()
+                    .fg(Color::LightCyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("        : Light Cyan - UI/UX work"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled("refactor", Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "refactor",
+                Style::default()
+                    .fg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("      : Light Yellow - Code quality"),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Other:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Other:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  ?     : Show this help"),
         Line::from("  q     : Quit application"),
     ];
@@ -514,22 +703,29 @@ fn draw_project_list(f: &mut Frame, app: &mut App) {
             height: 3,
         };
 
-        let input_text = vec![
-            Line::from(vec![
-                Span::styled("New Project Name: ", Style::default().fg(Color::Yellow)),
-                Span::raw(&app.input_buffer),
-            ]),
-        ];
+        let input_text = vec![Line::from(vec![
+            Span::styled("New Project Name: ", Style::default().fg(Color::Yellow)),
+            Span::raw(&app.input_buffer),
+        ])];
 
         let input_para = Paragraph::new(input_text)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
             .style(Style::default().bg(Color::DarkGray));
 
         f.render_widget(input_para, input_area);
     } else {
         // Show list of projects
         let mut lines = vec![
-            Line::from(Span::styled("Select a project:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "Select a project:",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
         ];
 
@@ -541,16 +737,25 @@ fn draw_project_list(f: &mut Frame, app: &mut App) {
 
             // Selection indicator
             if is_selected {
-                spans.push(Span::styled("> ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(
+                    "> ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ));
             } else {
                 spans.push(Span::raw("  "));
             }
 
             // Project name
             let style = if is_current {
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
             } else if is_selected {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -559,7 +764,10 @@ fn draw_project_list(f: &mut Frame, app: &mut App) {
 
             // Current indicator
             if is_current {
-                spans.push(Span::styled(" (current)", Style::default().fg(Color::DarkGray)));
+                spans.push(Span::styled(
+                    " (current)",
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
 
             lines.push(Line::from(spans));

@@ -48,7 +48,7 @@ fn run_app<B: ratatui::backend::Backend>(
     loop {
         // draw UI
         terminal.draw(|f| ui::draw(f, app))?;
-        
+
         // handle input
         if let Event::Key(key) = event::read()? {
             // Handle Ctrl+P globally to open project list
@@ -61,9 +61,10 @@ fn run_app<B: ratatui::backend::Backend>(
 
             match app.input_mode {
                 InputMode::Normal => handle_normal_mode(app, key.code),
-                InputMode::AddingTask | InputMode::AddingTag => {
-                    handle_input_mode(app, key.code)
-                }
+                InputMode::AddingTask
+                | InputMode::AddingTag
+                | InputMode::AddingColumn
+                | InputMode::RenamingColumn => handle_input_mode(app, key.code),
                 InputMode::ViewingTask => handle_viewing_task_mode(app, key.code),
                 InputMode::EditingTitle => handle_editing_title_mode(app, key.code),
                 InputMode::EditingDescription => handle_editing_description_mode(app, key.code),
@@ -121,6 +122,20 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) {
             app.move_right();
             app.update_scroll();
         }
+
+        // Column Management (Shift+...)
+        KeyCode::Char('H')
+        | KeyCode::Char('L')
+        | KeyCode::Char('C')
+        | KeyCode::Char('R')
+        | KeyCode::Char('D') => match key {
+            KeyCode::Char('H') => app.move_column_left(),
+            KeyCode::Char('L') => app.move_column_right(),
+            KeyCode::Char('C') => app.start_adding_column(),
+            KeyCode::Char('R') => app.start_renaming_column(),
+            KeyCode::Char('D') => app.delete_column(),
+            _ => {}
+        },
 
         // Actions
         KeyCode::Enter => app.open_task(),
