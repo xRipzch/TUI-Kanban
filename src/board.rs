@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use ratatui::style::Color;
+use serde::{Deserialize, Serialize};
 
-//simple task with title, tags, and description
+// simple task with title, tags, and description
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Task {
     pub title: String,
@@ -26,7 +26,7 @@ impl Project {
 }
 
 impl Task {
-    //Create task
+    // Create task
     pub fn new(title: String) -> Self {
         Self {
             title,
@@ -35,7 +35,7 @@ impl Task {
         }
     }
 
-    //add tags to the task
+    // add tags to the task
     pub fn add_tag(&mut self, tag: String) {
         if !self.tags.contains(&tag) {
             self.tags.push(tag);
@@ -59,117 +59,101 @@ impl Task {
             _ => Color::White,
         }
     }
+}
 
-    //return color based on tags (for backward compatibility)
-    pub fn get_color(&self) -> Color {
-        if self.tags.contains(&"urgent".to_string()) {
-            Color::Red
-        } else if self.tags.contains(&"security".to_string()) {
-            Color::LightRed
-        } else if self.tags.contains(&"bug".to_string()) {
-            Color::Yellow
-        } else if self.tags.contains(&"feature".to_string()) {
-            Color::Green
-        } else if self.tags.contains(&"performance".to_string()) {
-            Color::LightGreen
-        } else if self.tags.contains(&"enhancement".to_string()) {
-            Color::Blue
-        } else if self.tags.contains(&"User".to_string()) {
-            Color::LightBlue
-        } else if self.tags.contains(&"Dev".to_string()) {
-            Color::Magenta
-        } else if self.tags.contains(&"documentation".to_string()) {
-            Color::Cyan
-        } else if self.tags.contains(&"design".to_string()) {
-            Color::LightCyan
-        } else if self.tags.contains(&"refactor".to_string()) {
-            Color::LightYellow
-        } else {
-            Color::White
+// A single column in the board
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BoardColumn {
+    pub id: String,
+    pub name: String,
+    pub tasks: Vec<Task>,
+}
+
+impl BoardColumn {
+    pub fn new(id: String, name: String) -> Self {
+        Self {
+            id,
+            name,
+            tasks: Vec::new(),
         }
     }
 }
 
-// kanban board with four columns: todo, in_progress, testing, done
+// Kanban board with dynamic columns
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Board {
-    pub todo: Vec<Task>,
-    pub in_progress: Vec<Task>,
-    pub testing: Vec<Task>,
-    pub done: Vec<Task>,
+    pub columns: Vec<BoardColumn>,
 }
 
 impl Board {
-    //Create new empty board
+    // Create new board with default columns
     pub fn new() -> Self {
         Self {
-            todo: Vec::new(),
-            in_progress: Vec::new(),
-            testing: Vec::new(),
-            done: Vec::new(),
+            columns: vec![
+                BoardColumn::new("todo".to_string(), "To Do".to_string()),
+                BoardColumn::new("in_progress".to_string(), "In Progress".to_string()),
+                BoardColumn::new("testing".to_string(), "Testing".to_string()),
+                BoardColumn::new("done".to_string(), "Done".to_string()),
+            ],
         }
     }
 
-    // get column based on index
-    pub fn get_column_mut(&mut self, column: Column) -> &mut Vec<Task> {
-        match column {
-            Column::Todo => &mut self.todo,
-            Column::InProgress => &mut self.in_progress,
-            Column::Testing => &mut self.testing,
-            Column::Done => &mut self.done,
-        }
+    // get column by index (Read only)
+    pub fn get_column(&self, index: usize) -> Option<&BoardColumn> {
+        self.columns.get(index)
     }
 
-    //get column ((Rread only))
-    pub fn get_column(&self, column: Column) -> &Vec<Task> {
-        match column {
-            Column::Todo => &self.todo,
-            Column::InProgress => &self.in_progress,
-            Column::Testing => &self.testing,
-            Column::Done => &self.done,
-        }
+    // get column by index (Mutable)
+    pub fn get_column_mut(&mut self, index: usize) -> Option<&mut BoardColumn> {
+        self.columns.get_mut(index)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
 
-    // enum to indicate which column we're working with
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Column {
-    Todo,
-    InProgress,
-    Testing,
-    Done,
-}
-
-
-impl Column {
-    // move to next column (right)
-    pub fn next(self) -> Option<Self> {
-        match self {
-            Column::Todo => Some(Column::InProgress),
-            Column::InProgress => Some(Column::Testing),
-            Column::Testing => Some(Column::Done),
-            Column::Done => None,
-        }
+    #[test]
+    fn test_task_creation() {
+        let task = Task::new("Test Task".to_string());
+        assert_eq!(task.title, "Test Task");
+        assert!(task.tags.is_empty());
+        assert!(task.description.is_empty());
     }
 
-    // move to previous column (left)
-    pub fn prev(self) -> Option<Self> {
-        match self {
-            Column::Todo => None,
-            Column::InProgress => Some(Column::Todo),
-            Column::Testing => Some(Column::InProgress),
-            Column::Done => Some(Column::Testing),
-        }
+    #[test]
+    fn test_task_add_tag() {
+        let mut task = Task::new("Task".to_string());
+        task.add_tag("bug".to_string());
+        task.add_tag("urgent".to_string());
+        task.add_tag("bug".to_string()); // Duplicate
+
+        assert_eq!(task.tags.len(), 2);
+        assert!(task.tags.contains(&"bug".to_string()));
+        assert!(task.tags.contains(&"urgent".to_string()));
     }
 
-    //return column name
-    pub fn name(self) -> &'static str {
-        match self {
-            Column::Todo => "To Do",
-            Column::InProgress => "In Progress",
-            Column::Testing => "Testing",
-            Column::Done => "Done",
-        }
+    #[test]
+    fn test_tag_colors() {
+        assert_eq!(Task::get_tag_color("urgent"), Color::Red);
+        assert_eq!(Task::get_tag_color("feature"), Color::Green);
+        assert_eq!(Task::get_tag_color("unknown_tag"), Color::White);
+    }
+
+    #[test]
+    fn test_board_creation() {
+        let board = Board::new();
+        assert_eq!(board.columns.len(), 4);
+        assert_eq!(board.columns[0].name, "To Do");
+        assert_eq!(board.columns[3].name, "Done");
+    }
+
+    #[test]
+    fn test_board_column_creation() {
+        let col = BoardColumn::new("col_id".to_string(), "Column Name".to_string());
+        assert_eq!(col.id, "col_id");
+        assert_eq!(col.name, "Column Name");
+        assert!(col.tasks.is_empty());
     }
 }
